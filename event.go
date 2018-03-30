@@ -21,9 +21,6 @@ type event struct {
 }
 
 func (e *event) readLine(message string) error {
-	if e.isEnd() {
-		e.flush()
-	}
 	words := strings.Fields(message)
 	for _, word := range words {
 		e.readWord(word)
@@ -31,24 +28,15 @@ func (e *event) readLine(message string) error {
 	return nil
 }
 
-func (e *event) isEnd() bool {
-	if e.username == "" || e.username == "0" {
-		return false
-	}
-	if e.port == "" {
-		return false
-	}
-	if e.ipaddress == "127.0.0.1" || e.ipaddress == "0.0.0.0" || e.ipaddress == "" {
-		return false
-	}
-	return true
-}
-
 func (e *event) readWord(s string) {
 	if strings.Contains(s, equals) {
 		outer := strings.Split(s, equals)
 		s = strings.Replace(s, prefix, "", 1)
 		switch outer[0] {
+		case "type":
+			if outer[1] == "EOE" {
+				e.flush()
+			}
 		case "msg":
 			if strings.Contains(s, colon) {
 				inner := strings.Split(s, colon)
@@ -64,22 +52,13 @@ func (e *event) readWord(s string) {
 		case "comm":
 			e.cmd = outer[1]
 		case "saddr":
-			saddr, err := hex.DecodeString(strings.TrimLeft(outer[1], "saddr="))
-			if err != nil {
-				e.flush()
-				return
-			}
-			port, err := strconv.ParseInt(fmt.Sprintf("%x", saddr[2:4]), 16, 0)
-			if err != nil {
-				e.flush()
-				return
-			}
+			saddr, _ := hex.DecodeString(strings.TrimLeft(outer[1], "saddr="))
+			port, _ := strconv.ParseInt(fmt.Sprintf("%x", saddr[2:4]), 16, 0)
+			e.port = fmt.Sprintf("%v", port)
 			if strings.HasPrefix(outer[1], ipv4Addr) {
-				e.port = fmt.Sprintf("%v", port)
 				e.ipaddress = net.IP(saddr[4:8]).String()
 			}
 			if strings.HasPrefix(outer[1], ipv6Addr) {
-				e.port = fmt.Sprintf("%v", port)
 				e.ipaddress = net.IP(saddr[8:24]).String()
 			}
 		}
@@ -87,12 +66,17 @@ func (e *event) readWord(s string) {
 }
 
 func (e *event) flush() *event {
-	log.Println(e)
+	if e.username != "" && e.port != "" && e.ipaddress != "" {
+		log.Println(e)
+	}
+	e.id = ""
 	e.username = ""
 	e.timestamp = ""
 	e.port = ""
 	e.success = ""
 	e.ipaddress = ""
+	e.exec = ""
+	e.cmd = ""
 	return e
 }
 
